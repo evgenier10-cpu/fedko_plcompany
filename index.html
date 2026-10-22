@@ -3,6 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- TikTok Pixel Code Start -->
+<script>
+!function (w, d, t) {
+  w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(
+var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script")
+;n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
+
+
+  ttq.load('DBCT74JC77U4J2JQ9L10');
+  ttq.page();
+}(window, document, 'ttq');
+</script>
+<!-- TikTok Pixel Code End -->
 <title>FEDKO Квіз для водіїв</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -177,31 +190,35 @@ const CONFIG = {
   submitEndpoint: "",
   // Назви подій TikTok Pixel. Подія відправляється, лише якщо на сторінці є ttq.
   tiktokEvents: {
-    quizStart: "ClickButton",          // натиснули «Дізнатися, чи підходить мені робота»
-    questionsCompleted: "CompleteRegistration", // відповіли на 5 запитань
-    leadSubmitted: "SubmitForm"         // заявку успішно прийняв endpoint
+    quizStart: "",            // вимкнено
+    questionsCompleted: "",   // вимкнено
+    leadSubmitted: "SubmitForm" // лише після успішного запису заявки в таблицю, коли показано «Дякуємо!»
   }
 };
 
 /* ---------- TikTok Pixel: без імені, телефону та відповідей ---------- */
-function trackEvent(key){
+function trackEvent(key, eventId){
   const name = CONFIG.tiktokEvents[key];
   try {
     if (name && window.ttq && typeof window.ttq.track === "function") {
-      window.ttq.track(name, { content_name: "fedko_driver_quiz", content_category: "driver_ce_curtainsider" });
+      window.ttq.track(name, { content_name: "fedko_driver_quiz", content_category: "driver_ce_curtainsider" }, eventId ? { event_id: eventId } : undefined);
     }
   } catch(e) {}
 }
+const firedLeads = new Set();
 
 /* ---------- Надсилання заявки: підключи CRM або webhook тут ---------- */
 async function submitApplication(payload){
   if (!CONFIG.submitEndpoint) return { mode: "demo" };
+  // text/plain — щоб Google Apps Script прийняв запит без CORS-перевірки
   const res = await fetch(CONFIG.submitEndpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(payload)
   });
   if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) throw new Error(data.error || "rejected");
   return { mode: "sent" };
 }
 
@@ -471,6 +488,14 @@ function Contact({ result, contact, setContact, errors, dir }){
 
 function Done({ mode, payload, onRestart }){
   const demo = mode === "demo";
+  // SubmitForm: тільки коли endpoint підтвердив запис і на екрані вже «Дякуємо!». Один раз на заявку.
+  useEffect(() => {
+    if (mode !== "sent") return;
+    const id = "lead_" + payload.created_at;
+    if (firedLeads.has(id)) return;
+    firedLeads.add(id);
+    trackEvent("leadSubmitted", id);
+  }, [mode, payload]);
   return h("div",{className:"screen gut",style:{paddingTop:28}},
     h("div",{className:"done-ic"+(demo?" demo":"")}, demo ? Ico.info() : Ico.check()),
     demo
@@ -549,7 +574,6 @@ function App(){
     setSending(true);
     try {
       const r = await submitApplication(payload);
-      if (r.mode === "sent") trackEvent("leadSubmitted");
       setDone({ mode: r.mode, payload }); go(6, 1);
     } catch(err) {
       setErrors({ submit: "Не вдалося надіслати заявку. Перевір з’єднання й спробуй ще раз." });
