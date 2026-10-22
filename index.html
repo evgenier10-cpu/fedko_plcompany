@@ -128,6 +128,13 @@ h2{font-family:var(--display);font-weight:900;font-size:clamp(24px,6.8vw,30px);l
 .inp{width:100%;min-height:54px;background:var(--graphite);border:2px solid var(--line);border-radius:12px;padding:12px 14px;font-size:16px;outline:none}
 .inp:focus{border-color:var(--orange)}
 .inp.bad{border-color:var(--error)}
+.inp::placeholder{color:var(--muted);opacity:.32;letter-spacing:.08em}
+.inp.full{border-color:#FF4D3A}
+.inp.fa{animation:nudgeA .32s ease-in-out}
+.inp.fb{animation:nudgeB .32s ease-in-out}
+@keyframes nudgeA{20%{transform:translateX(-5px)}45%{transform:translateX(5px)}70%{transform:translateX(-3px)}100%{transform:none}}
+@keyframes nudgeB{20%{transform:translateX(-5px)}45%{transform:translateX(5px)}70%{transform:translateX(-3px)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){.inp.full{animation:none}}
 .err{color:var(--error);font-size:13.5px;font-weight:600;margin:0}
 
 .route{display:flex;align-items:center;gap:8px;background:var(--graphite);border-radius:14px;padding:12px;flex-wrap:wrap}
@@ -331,8 +338,7 @@ function formatPhone(countryCode, raw){
     if (d.startsWith(country.d)) d = d.slice(country.d.length);
   }
   if (countryCode === "UA" && d.startsWith("0")) d = d.slice(1);   // 063… → 63…
-  let max = country.max;
-  if (countryCode === "PL" && d.startsWith("0")) max = 10;          // щоб показати підказку про UA
+  const max = country.max;
   // якщо людина набирає код країни без «+» (48… / 380…), даємо дописати й прибираємо код
   const cap = country.d && d.startsWith(country.d) ? max + country.d.length : max;
   d = d.slice(0, cap);
@@ -344,7 +350,12 @@ function formatPhone(countryCode, raw){
   if (i < d.length) out.push(d.slice(i));
   return out.join(" ");
 }
-const PHONE_PLACEHOLDER = { PL:"600 123 456", UA:"67 123 45 67", DE:"170 1234 567", NL:"6 1234 5678", BE:"470 12 34 56", CZ:"601 123 456", SK:"901 123 456", LT:"612 34567", RO:"712 345 678", MD:"69 123 456", BY:"29 123 45 67" };
+// Підказка в порожньому полі: стільки X, скільки цифр потрібно (PL → XXX XXX XXX)
+function phoneMask(countryCode){
+  const country = COUNTRIES.find(c => c.c === countryCode);
+  if (!country || countryCode === "OTHER") return "Номер телефону";
+  return formatPhone(countryCode, "9".repeat(country.max)).replace(/9/g, "X");
+}
 
 function labelFor(q, id){ const o = q.options.find(o => o[0] === id); return o ? o[1] : null; }
 
@@ -478,6 +489,17 @@ function Question({ q, value, otherText, setValue, setOther, showErr, dir }){
 
 function Contact({ result, contact, setContact, errors, dir }){
   const country = COUNTRIES.find(c => c.c === contact.country);
+  const [full, setFull] = useState(0);   // спрацьовує, коли намагаються ввести зайву цифру
+  const fullTimer = useRef(null);
+  const onPhone = (raw) => {
+    const next = formatPhone(contact.country, raw);
+    if (next === contact.phone && raw.length > contact.phone.length) {
+      setFull(n => n + 1);
+      clearTimeout(fullTimer.current);
+      fullTimer.current = setTimeout(() => setFull(0), 1600);
+    }
+    setContact({...contact, phone: next});
+  };
   const privacy = CONFIG.privacyPolicyUrl
     ? h("a",{href:CONFIG.privacyPolicyUrl,target:"_blank",rel:"noopener"},"Політика конфіденційності FEDKO")
     : h("span",{className:"slot"},"Політика конфіденційності — посилання буде додано");
@@ -502,8 +524,10 @@ function Contact({ result, contact, setContact, errors, dir }){
           contact.country==="OTHER" && h("input",{id:"f-code",className:"inp"+(errors.phone?" bad":""),"aria-label":"Код країни, цифри",inputMode:"numeric",placeholder:"+код",maxLength:5,
             value:contact.code,onChange:e => setContact({...contact,code:e.target.value})}),
           h("input",{id:"f-phone",className:"inp"+(errors.phone?" bad":""),type:"tel",inputMode:"tel",autoComplete:"tel-national",
-            placeholder: PHONE_PLACEHOLDER[contact.country] || "Номер",
-            value:contact.phone,onChange:e => setContact({...contact,phone:formatPhone(contact.country, e.target.value)})})),
+            placeholder: phoneMask(contact.country),
+            className:"inp"+(errors.phone?" bad":"")+(full ? (full % 2 ? " full fa" : " full fb") : ""),
+            value:contact.phone,onChange:e => onPhone(e.target.value)})),
+        full > 0 && !(contact.country==="PL" && /^0/.test(contact.phone)) && h("p",{className:"err",role:"status"},`Номер уже повний — ${country.max} цифр після +${country.d}`),
         !errors.phone && contact.country==="PL" && /^0/.test(contact.phone) && h("p",{className:"err"},"Схоже, це український номер — обери код UA +380"),
         errors.phone && h("p",{className:"err",role:"alert"},errors.phone)),
       h("label",{className:"consent",htmlFor:"f-consent"},
