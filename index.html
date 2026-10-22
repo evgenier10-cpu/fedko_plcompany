@@ -312,6 +312,8 @@ function normalizePhone(country, customCode, raw){
   if (raw && raw.trim().startsWith("+")) { if (code && digits.startsWith(code)) digits = digits.slice(code.length); }
   else if (code && digits.startsWith("00" + code)) digits = digits.slice(2 + code.length);
   else if (code && digits.length > country.max && digits.startsWith(code)) digits = digits.slice(code.length);
+  // Польські номери не починаються з 0 — це майже завжди український номер з неправильним кодом
+  if (country.c === "PL" && digits.startsWith("0")) return { ok:false, reason:"pl_leading_zero" };
   if (digits.startsWith("0") && digits.length === country.min + 1) digits = digits.slice(1);
   const okCode = /^\d{1,4}$/.test(code);
   const ok = okCode && digits.length >= country.min && digits.length <= country.max;
@@ -566,7 +568,9 @@ function App(){
     if (contact.name.trim().length < 2) e.name = "Напиши своє ім’я.";
     const country = COUNTRIES.find(c => c.c === contact.country);
     const ph = normalizePhone(country, contact.code, contact.phone);
-    if (!ph.ok) e.phone = "Перевір номер телефону та код країни";
+    if (!ph.ok) e.phone = ph.reason === "pl_leading_zero"
+      ? "Схоже, це український номер — обери код UA +380"
+      : "Перевір номер телефону та код країни";
     if (!contact.consent) e.consent = "Щоб рекрутер міг зв’язатися з тобою, постав позначку згоди.";
     setErrors(e);
     if (Object.keys(e).length) return;
