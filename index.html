@@ -320,6 +320,32 @@ function normalizePhone(country, customCode, raw){
   return { ok, code, national: digits, e164: ok ? "+" + code + digits : null };
 }
 
+// Маска введення: лише цифри, ліміт за країною, групування для читабельності
+const PHONE_GROUPS = { PL:[3,3,3], UA:[2,3,2,2], CZ:[3,3,3], SK:[3,3,3], NL:[1,4,4], BE:[3,2,2,2], DE:[3,4,4], LT:[3,5], RO:[3,3,3], MD:[2,3,3], BY:[2,3,2,2] };
+function formatPhone(countryCode, raw){
+  const country = COUNTRIES.find(c => c.c === countryCode);
+  let d = String(raw || "").replace(/\D/g, "");
+  const s = String(raw || "").trim();
+  if (country.d && (s.startsWith("+") || s.startsWith("00"))) {
+    if (s.startsWith("00")) d = d.slice(2);
+    if (d.startsWith(country.d)) d = d.slice(country.d.length);
+  }
+  if (countryCode === "UA" && d.startsWith("0")) d = d.slice(1);   // 063… → 63…
+  let max = country.max;
+  if (countryCode === "PL" && d.startsWith("0")) max = 10;          // щоб показати підказку про UA
+  // якщо людина набирає код країни без «+» (48… / 380…), даємо дописати й прибираємо код
+  const cap = country.d && d.startsWith(country.d) ? max + country.d.length : max;
+  d = d.slice(0, cap);
+  if (country.d && d.length > max && d.startsWith(country.d)) d = d.slice(country.d.length);
+  d = d.slice(0, max);
+  const g = PHONE_GROUPS[countryCode] || [3,3,3,3,3];
+  const out = []; let i = 0;
+  for (const n of g) { if (i >= d.length) break; out.push(d.slice(i, i + n)); i += n; }
+  if (i < d.length) out.push(d.slice(i));
+  return out.join(" ");
+}
+const PHONE_PLACEHOLDER = { PL:"600 123 456", UA:"67 123 45 67", DE:"170 1234 567", NL:"6 1234 5678", BE:"470 12 34 56", CZ:"601 123 456", SK:"901 123 456", LT:"612 34567", RO:"712 345 678", MD:"69 123 456", BY:"29 123 45 67" };
+
 function labelFor(q, id){ const o = q.options.find(o => o[0] === id); return o ? o[1] : null; }
 
 function buildPayload(ans, other, contact, phone, result){
@@ -471,13 +497,14 @@ function Contact({ result, contact, setContact, errors, dir }){
         h("label",{htmlFor:"f-phone"},"Номер телефону"),
         h("div",{className:"phone"+(contact.country==="OTHER"?" other":"")},
           h("select",{id:"f-country",className:"inp","aria-label":"Код країни",value:contact.country,
-            onChange:e => setContact({...contact,country:e.target.value})},
+            onChange:e => setContact({...contact,country:e.target.value,phone:formatPhone(e.target.value, contact.phone)})},
             COUNTRIES.map(c => h("option",{key:c.c,value:c.c}, c.c==="OTHER" ? "Інша" : `${c.c} +${c.d}`))),
           contact.country==="OTHER" && h("input",{id:"f-code",className:"inp"+(errors.phone?" bad":""),"aria-label":"Код країни, цифри",inputMode:"numeric",placeholder:"+код",maxLength:5,
             value:contact.code,onChange:e => setContact({...contact,code:e.target.value})}),
           h("input",{id:"f-phone",className:"inp"+(errors.phone?" bad":""),type:"tel",inputMode:"tel",autoComplete:"tel-national",
-            placeholder: country && country.c==="PL" ? "600 123 456" : country && country.c==="UA" ? "67 123 45 67" : "Номер",
-            value:contact.phone,onChange:e => setContact({...contact,phone:e.target.value})})),
+            placeholder: PHONE_PLACEHOLDER[contact.country] || "Номер",
+            value:contact.phone,onChange:e => setContact({...contact,phone:formatPhone(contact.country, e.target.value)})})),
+        !errors.phone && contact.country==="PL" && /^0/.test(contact.phone) && h("p",{className:"err"},"Схоже, це український номер — обери код UA +380"),
         errors.phone && h("p",{className:"err",role:"alert"},errors.phone)),
       h("label",{className:"consent",htmlFor:"f-consent"},
         h("input",{id:"f-consent",type:"checkbox",checked:contact.consent,onChange:e => setContact({...contact,consent:e.target.checked})}),
