@@ -214,6 +214,18 @@ function trackEvent(key, eventId){
 }
 const firedLeads = new Set();
 
+/* ---------- Воронка: кожен екран квізу — окрема подія (один раз за відвідування) ---------- */
+const FUNNEL_EVENTS = ["Quiz_Question_1","Quiz_Question_2","Quiz_Question_3","Quiz_Question_4","Quiz_Question_5","Quiz_Contact_Form"];
+const firedSteps = new Set();
+function trackFunnelStep(step){
+  const name = FUNNEL_EVENTS[step];
+  if (!name || firedSteps.has(name)) return;
+  firedSteps.add(name);
+  const props = { content_name: "fedko_driver_quiz", quiz_step: step + 1 };
+  try { if (window.ttq && typeof window.ttq.track === "function") window.ttq.track(name, props); } catch(e) {}
+  try { if (typeof window.fbq === "function") window.fbq("trackCustom", name, props); } catch(e) {}  // якщо буде додано Meta Pixel
+}
+
 /* ---------- Надсилання заявки: підключи CRM або webhook тут ---------- */
 async function submitApplication(payload){
   if (!CONFIG.submitEndpoint) return { mode: "demo" };
@@ -473,7 +485,7 @@ function Question({ q, value, otherText, setValue, setOther, showErr, dir }){
       h("li",null,h("span",null,h("b",null,"3 тижні")," в рейсі, тривалість узгоджуємо.")),
       h("li",null,h("span",null,h("b",null,"Робота на шторі")," Німеччиною та сусідніми країнами."))),
     q.photo && h(Photo,{src:CONFIG.photos[q.photo], cls:"thumb", label:"CONFIG.photos."+q.photo}),
-    multi && h("p",{className:"hint"},Ico.info(),"Можна обрати кілька варіантів."),
+    multi && h("p",{className:"hint"},Ico.info(),"У тебе обов’язково повинні бути C+E та код 95 — щоб працювати у нас."),
     h("div",{className:"opts", role: multi ? "group" : "radiogroup", "aria-labelledby":"qt-"+q.id},
       q.options.map(([id,label]) => h("button",{
         key:id, type:"button", className:"opt", id:`opt-${q.id}-${id}`,
@@ -581,6 +593,7 @@ function App(){
   const advTimer = useRef(null);
 
   useEffect(() => { try { window.scrollTo({top:0}); } catch(e){} }, [step]);
+  useEffect(() => { if (step >= 0 && step <= 5) trackFunnelStep(step); }, [step]);
 
   const go = (n, d) => { clearTimeout(advTimer.current); setDir(d); setShowErr(false); setErrors({}); setStep(n); };
 
